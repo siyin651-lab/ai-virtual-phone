@@ -440,7 +440,9 @@ async function generateImageViaCloudflareWorker(params: {
   if (IMAGE_GEN_PROXY_URL) {
     return generateImageDirect({ ...params, proxyBaseUrl: IMAGE_GEN_PROXY_URL });
   }
-  return generateImageViaServer(params);
+  // 未配置 Worker 时回落到同源服务端非流式代理,避免部分托管平台流式响应被提前截断导致
+  // "流式响应中断,未收到结果"。
+  return generateImageViaServerNonStreaming(params);
 }
 
 async function generateImageViaServer(params: {
@@ -523,6 +525,53 @@ async function generateImageViaServer(params: {
       if (!res.ok || data.error || !data.b64) {
         throw new Error(data.error || `生图请求失败 ${res.status}`);
       }
+    }
+    return { b64: data.b64, mimeType: data.mimeType, revisedPrompt: data.revisedPrompt };
+  } finally {
+    clearTimeout(totalTimer);
+    if (signal) signal.removeEventListener("abort", onOuterAbort);
+  }
+}
+
+// 同源服务端代理的非流式版本:直接等一个完整 JSON 响应,避免部分托管平台(Netlify/Vercel 函数)
+// 在流式心跳处理上不稳定或慢生图时流被提前截断,导致客户端收到 "流式响应中断,未收到结果"。
+// 对站子B 这类「服务端能出网但流式易断」的场景更稳。注意:仍受服务端函数最大时长限制。
+async function generateImageViaServerNonStreaming(params: {
+  settings: ImageGenerationSettings;
+  prompt: string;
+  referenceImageDataUrl: string | null;
+  signal?: AbortSignal;
+}): Promise<ImageGenerationApiResponse> {
+  const { settings, prompt, referenceImageDataUrl, signal } = params;
+  throwIfAborted(signal);
+
+  const controller = new AbortController();
+  const onOuterAbort = () => controller.abort();
+  if (signal) signal.addEventListener("abort", onOuterAbort, { once: true });
+  const totalTimer = setTimeout(() => controller.abort(), 180_000);
+
+  try {
+    const res = await fetch("/api/image-generation", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      signal: controller.signal,
+      body: JSON.stringify({
+        apiKey: settings.apiKey,
+        baseUrl: settings.baseUrl,
+        model: settings.model,
+        prompt,
+        size: settings.size,
+        quality: settings.quality,
+        referenceImageDataUrl: referenceImageDataUrl || undefined,
+      }),
+    });
+    throwIfAborted(signal);
+
+    type ServerImagePayload = { httpStatus?: number; b64?: string; mimeType?: string; revisedPrompt?: string; error?: string };
+    const data = await res.json().catch(() => ({})) as ServerImagePayload;
+    throwIfAborted(signal);
+    if (!res.ok || data.error || !data.b64) {
+      throw new Error(data.error || `生图请求失败 ${res.status}`);
     }
     return { b64: data.b64, mimeType: data.mimeType, revisedPrompt: data.revisedPrompt };
   } finally {
