@@ -424,22 +424,23 @@ async function generateImageViaServerOrProxy(params: {
   return generateImageViaServer(params);
 }
 
-// 「Cloudflare Worker 代理」模式:完全等价于 BabyLink 的 cloudflare-worker 生图链路。
-// 浏览器 → 自部署 CF Worker(带 CORS、无时长上限) → 用户自己的生图上游,
-// 绕开浏览器直连被上游 CORS 预检拦截的问题,也不经过站点服务端(不受站点函数时长/出网限制)。
-// 必须先配置 NEXT_PUBLIC_IMAGE_GEN_PROXY_URL,否则给出明确错误,而非静默回落到必失败的直连。
+// 「Cloudflare Worker 代理 / 同源服务端代理」模式:完全等价于 BabyLink 在站子B 能连的逻辑。
+// 核心就是「让浏览器永远走一条无 CORS 的链路」:
+//   - 配了 NEXT_PUBLIC_IMAGE_GEN_PROXY_URL → 浏览器 → 自部署 CF Worker(带 CORS、无时长上限) → 上游;
+//   - 没配 → 回落到站点自身同源服务端代理 /api/image-generation:浏览器只与「同源」服务端通信(无 CORS),
+//     由服务端打上游。这正是 Link 网页在站子B 能直连的本质——Link 网页与 API 同源,浏览器视作同源请求
+//     不发预检;此处改为浏览器↔同源服务端,效果等价。对 154-21-194-239.sslip.io 这类「零 CORS」网关,
+// 这是不部署 Worker 也能连通的唯一纯前端路径。
 async function generateImageViaCloudflareWorker(params: {
   settings: ImageGenerationSettings;
   prompt: string;
   referenceImageDataUrl: string | null;
   signal?: AbortSignal;
 }): Promise<ImageGenerationApiResponse> {
-  if (!IMAGE_GEN_PROXY_URL) {
-    throw new Error(
-      "未配置生图代理地址(IMAGE_GEN_PROXY_URL)。请在站点环境变量中设置 NEXT_PUBLIC_IMAGE_GEN_PROXY_URL 为你的 Cloudflare Worker 地址,或将请求方式改为「服务端转发」。",
-    );
+  if (IMAGE_GEN_PROXY_URL) {
+    return generateImageDirect({ ...params, proxyBaseUrl: IMAGE_GEN_PROXY_URL });
   }
-  return generateImageDirect({ ...params, proxyBaseUrl: IMAGE_GEN_PROXY_URL });
+  return generateImageViaServer(params);
 }
 
 async function generateImageViaServer(params: {
