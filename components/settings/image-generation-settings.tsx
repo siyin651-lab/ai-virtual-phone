@@ -334,7 +334,13 @@ export function ImageGenerationSettings() {
                     >
                         <option value="server">服务端转发（推荐，可避免跨域报错）</option>
                         <option value="direct">浏览器直连（需接口允许 CORS 跨域）</option>
+                        <option value="cloudflare-worker">Cloudflare Worker 代理（站子B 专用）</option>
                     </Select>
+                    {settings.requestMode === "cloudflare-worker" && (
+                        <p className="menu-desc ml-1" style={{ color: "#b45309" }}>
+                            该模式需先在站点环境变量配置 NEXT_PUBLIC_IMAGE_GEN_PROXY_URL（你的 Cloudflare Worker 地址），由 Worker 转发到真实生图上游，绕开浏览器跨域限制。
+                        </p>
+                    )}
                 </div>
 
                 {settings.provider === "novelai" ? (
