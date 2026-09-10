@@ -338,7 +338,7 @@ export function ImageGenerationSettings() {
                     </Select>
                     {settings.requestMode === "cloudflare-worker" && (
                         <p className="menu-desc ml-1" style={{ color: "#b45309" }}>
-                            该模式走「无跨域」链路连上游：优先用 NEXT_PUBLIC_IMAGE_GEN_PROXY_URL 指定的 Cloudflare Worker 转发；未配置时自动回落到站点自身同源服务端代理（浏览器只与同源服务端通信，由服务端打上游），绕开浏览器跨域限制，与 Link 网页在站子B 直连同理。
+                            该模式走「无跨域」链路连上游：优先用 NEXT_PUBLIC_IMAGE_GEN_PROXY_URL 指定的 Cloudflare Worker 转发；未配置时自动回落到站点自身同源服务端<strong>非流式</strong>代理（浏览器只与同源服务端通信，由服务端打上游），绕开浏览器跨域限制、避免流式响应被中途截断，与 Link 网页在站子B 直连同理。
                         </p>
                     )}
                 </div>
