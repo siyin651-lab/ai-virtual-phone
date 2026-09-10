@@ -179,7 +179,11 @@ export type VoiceApiConfig = {
 // --- Image Generation ---
 export type ImageGenerationProvider = "openai" | "novelai";
 
-export type ImageGenerationRequestMode = "server" | "direct";
+// server: 经站点服务端 /api/image-generation 转发(旧 Netlify 心跳流式)。
+// direct: 浏览器直连上游(需上游允许 CORS)。
+// cloudflare-worker: 浏览器 → 自部署 CF Worker(带 CORS、无时长上限) → 上游,
+//   完全等价于 BabyLink 的 cloudflare-worker 生图链路,专门用于上游 CORS 预检被拦截的站点(如站子B)。
+export type ImageGenerationRequestMode = "server" | "direct" | "cloudflare-worker";
 
 export type ImageHostingProvider = "none" | "imgbb";
 
