@@ -327,6 +327,8 @@ async function runImageGeneration(input: ImageGenerationRequest): Promise<{ stat
       body = JSON.stringify({
         model,
         prompt,
+        // 与 Link / 直连路径一致:优先要求上游直接回传 base64,避免返回会被 CORS / 过期拦截的图片 URL。
+        response_format: "b64_json",
         ...(input.size && input.size !== "auto" ? { size: input.size } : {}),
         ...(input.quality && input.quality !== "auto" ? { quality: input.quality } : {}),
       });
