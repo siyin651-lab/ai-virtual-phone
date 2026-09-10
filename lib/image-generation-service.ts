@@ -348,9 +348,12 @@ async function generateImageDirect(params: {
     body = form;
   } else {
     headers["Content-Type"] = "application/json";
+    // 与 BabyLink 一致:优先要求上游直接回传 base64(b64_json),避免部分网关默认返回
+    // 一个会被 CORS / 过期策略拦截的图片 URL。上层解析已兼容 url 与 b64 两种返回。
     body = JSON.stringify({
       model: settings.model,
       prompt,
+      response_format: "b64_json",
       ...(settings.size && settings.size !== "auto" ? { size: settings.size } : {}),
       ...(settings.quality && settings.quality !== "auto" ? { quality: settings.quality } : {}),
     });
@@ -419,6 +422,24 @@ async function generateImageViaServerOrProxy(params: {
     }
   }
   return generateImageViaServer(params);
+}
+
+// 「Cloudflare Worker 代理」模式:完全等价于 BabyLink 的 cloudflare-worker 生图链路。
+// 浏览器 → 自部署 CF Worker(带 CORS、无时长上限) → 用户自己的生图上游,
+// 绕开浏览器直连被上游 CORS 预检拦截的问题,也不经过站点服务端(不受站点函数时长/出网限制)。
+// 必须先配置 NEXT_PUBLIC_IMAGE_GEN_PROXY_URL,否则给出明确错误,而非静默回落到必失败的直连。
+async function generateImageViaCloudflareWorker(params: {
+  settings: ImageGenerationSettings;
+  prompt: string;
+  referenceImageDataUrl: string | null;
+  signal?: AbortSignal;
+}): Promise<ImageGenerationApiResponse> {
+  if (!IMAGE_GEN_PROXY_URL) {
+    throw new Error(
+      "未配置生图代理地址(IMAGE_GEN_PROXY_URL)。请在站点环境变量中设置 NEXT_PUBLIC_IMAGE_GEN_PROXY_URL 为你的 Cloudflare Worker 地址,或将请求方式改为「服务端转发」。",
+    );
+  }
+  return generateImageDirect({ ...params, proxyBaseUrl: IMAGE_GEN_PROXY_URL });
 }
 
 async function generateImageViaServer(params: {
@@ -789,7 +810,9 @@ export async function generateImageFromConfiguredApi(params: {
 
   const data = settings.requestMode === "direct"
     ? await generateImageDirect({ settings, prompt, referenceImageDataUrl, signal: params.signal })
-    : await generateImageViaServerOrProxy({ settings, prompt, referenceImageDataUrl, signal: params.signal });
+    : settings.requestMode === "cloudflare-worker"
+      ? await generateImageViaCloudflareWorker({ settings, prompt, referenceImageDataUrl, signal: params.signal })
+      : await generateImageViaServerOrProxy({ settings, prompt, referenceImageDataUrl, signal: params.signal });
 
   throwIfAborted(params.signal);
   const mimeType = data.mimeType || "image/png";
