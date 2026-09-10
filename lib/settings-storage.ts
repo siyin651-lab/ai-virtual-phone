@@ -731,7 +731,7 @@ function normalizeImageGenerationSettings(settings: Partial<ImageGenerationSetti
         ? settings.characterReferences
         : {};
     const provider = settings?.provider === "novelai" ? "novelai" : "openai";
-    const requestMode = settings?.requestMode === "server" || settings?.requestMode === "direct"
+    const requestMode = settings?.requestMode === "server" || settings?.requestMode === "direct" || settings?.requestMode === "cloudflare-worker"
         ? settings.requestMode
         : DEFAULT_IMAGE_GENERATION_SETTINGS.requestMode;
     const hosting: Partial<ImageGenerationSettings["imageHosting"]> = settings?.imageHosting && typeof settings.imageHosting === "object"
